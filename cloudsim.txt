@@ -1,104 +1,152 @@
-
 import org.cloudbus.cloudsim.*;
-
 import org.cloudbus.cloudsim.core.CloudSim;
-
 import org.cloudbus.cloudsim.provisioners.BwProvisionerSimple;
-
 import org.cloudbus.cloudsim.provisioners.PeProvisionerSimple;
-
 import org.cloudbus.cloudsim.provisioners.RamProvisionerSimple;
 
-
-
 import java.util.*;
-
-
 
 public class lab3 {
 
     public static void main(String[] args) throws Exception {
 
-
-
+        // Step 1: Initialize CloudSim
         CloudSim.init(1, Calendar.getInstance(), false);
 
+        // Step 2: Create Processing Element (CPU)
+        List<Pe> peList = new ArrayList<>();
+        peList.add(new Pe(0, new PeProvisionerSimple(1000)));
 
+        // Step 3: Create Host
+        List<Host> hostList = new ArrayList<>();
 
-        List<Host> h = new ArrayList<>();
+        Host host = new Host(
+                0,
+                new RamProvisionerSimple(2048),
+                new BwProvisionerSimple(10000),
+                1000000,
+                peList,
+                new VmSchedulerTimeShared(peList)
+        );
 
-        List<Pe> p = Arrays.asList(new Pe(0, new PeProvisionerSimple(1000)));
+        hostList.add(host);
 
+        // Step 4: Create Datacenter
+        DatacenterCharacteristics characteristics =
+                new DatacenterCharacteristics(
+                        "x86",
+                        "Linux",
+                        "Xen",
+                        hostList,
+                        10.0,
+                        3.0,
+                        0.05,
+                        0.001,
+                        0.0
+                );
 
+        Datacenter datacenter = new Datacenter(
+                "Datacenter_1",
+                characteristics,
+                new VmAllocationPolicySimple(hostList),
+                new LinkedList<Storage>(),
+                0
+        );
 
-        h.add(new Host(0, new RamProvisionerSimple(2048),new BwProvisionerSimple(10000), 1000000,p, new VmSchedulerTimeShared(p)));
+        // Step 5: Create Broker
+        DatacenterBroker broker = new DatacenterBroker("Broker");
 
+        // Step 6: Create VM
+        List<Vm> vmList = new ArrayList<>();
 
+        Vm vm = new Vm(
+                0,
+                broker.getId(),
+                1000,
+                1,
+                512,
+                1000,
+                10000,
+                "Xen",
+                new CloudletSchedulerTimeShared()
+        );
 
-        Datacenter dc = new Datacenter("DC",
+        vmList.add(vm);
 
-                new DatacenterCharacteristics("x86","Linux","Xen",h,10,3,0.05,0.001,0),
+        broker.submitVmList(vmList);
 
-                new VmAllocationPolicySimple(h), new LinkedList<>(),0);
+        // Step 7: Create Cloudlets
+        List<Cloudlet> cloudletList = new ArrayList<>();
 
+        long[] lengths = {40000, 20000, 10000, 30000};
 
+        for (int i = 0; i < lengths.length; i++) {
 
-        DatacenterBroker b = new DatacenterBroker("B");
-
-
-
-        b.submitVmList(Arrays.asList(
-
-                new Vm(0,b.getId(),1000,1,512,1000,10000,"Xen",
-
-                        new CloudletSchedulerTimeShared())
-
-        ));
-
-
-
-        List<Cloudlet> cl = new ArrayList<>();
-
-        long[] l = {40000,20000,10000,30000};
-
-
-
-        for(int i=0;i<l.length;i++){
-
-            Cloudlet c = new Cloudlet(i,l[i],1,300,300,
-
+            Cloudlet cloudlet = new Cloudlet(
+                    i,
+                    lengths[i],
+                    1,
+                    300,
+                    300,
                     new UtilizationModelFull(),
-
                     new UtilizationModelFull(),
+                    new UtilizationModelFull()
+            );
 
-                    new UtilizationModelFull());
+            cloudlet.setUserId(broker.getId());
 
-            c.setUserId(b.getId());
+            // Bind Cloudlet to VM
+            cloudlet.setVmId(vm.getId());
 
-            cl.add(c);
-
+            cloudletList.add(cloudlet);
         }
 
+        // =====================================================
+        // CUSTOM SCHEDULING ALGORITHM : SJF
+        // =====================================================
 
+        // Sort cloudlets based on smallest length first
+        cloudletList.sort(
+                Comparator.comparingLong(Cloudlet::getCloudletLength)
+        );
 
-        // 🔥 SJF (only core logic)
+        // Submit cloudlets after SJF sorting
+        broker.submitCloudletList(cloudletList);
 
-        cl.sort(Comparator.comparingLong(Cloudlet::getCloudletLength));
-
-
-
-        b.submitCloudletList(cl);
-
-
-
+        // Step 8: Start Simulation
         CloudSim.startSimulation();
 
-        for(Cloudlet c: b.getCloudletReceivedList())
-
-            System.out.println(c.getCloudletId()+" -> "+c.getCloudletLength());
+        // Step 9: Get Results
+        List<Cloudlet> resultList = broker.getCloudletReceivedList();
 
         CloudSim.stopSimulation();
 
-    }
+        // Step 10: Print Results
+        System.out.println("\n========== SJF Scheduling Output ==========\n");
 
+        System.out.println(
+                "Cloudlet ID\tSTATUS\t\tVM ID\tStart Time\tFinish Time"
+        );
+
+        for (Cloudlet cloudlet : resultList) {
+
+            String status;
+
+            if (cloudlet.getCloudletStatus() == Cloudlet.SUCCESS) {
+                status = "SUCCESS";
+            } else {
+                status = "FAILED";
+            }
+
+            System.out.println(
+                    cloudlet.getCloudletId() + "\t\t" +
+                    status + "\t\t" +
+                    cloudlet.getVmId() + "\t\t" +
+                    cloudlet.getExecStartTime() + "\t\t" +
+                    cloudlet.getFinishTime()
+            );
+        }
+
+        System.out.println("\nSJF Scheduling Successfully Executed.");
+    }
 }
